@@ -10,9 +10,9 @@
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
          color:var(--fg); background:#f6f6f8; }
-  header { background:#fff; border-bottom:1px solid var(--bd); padding:16px 24px; position:sticky; top:0; z-index:10; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:16px 24px; position:sticky; top:0; z-index:10; text-align:center; }
   h1 { font-size:18px; margin:0 0 4px; }
-  .badges span { font-size:12px; padding:2px 8px; border-radius:10px; margin-right:6px; }
+  .badges span { font-size:12px; padding:2px 8px; border-radius:10px; margin:0 3px; }
   .on { background:#e6f4ea; color:#137333; } .off { background:#fce8e6; color:#a50e0e; }
   main { max-width:1180px; margin:0 auto; padding:20px 24px; }
   .bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; align-items:center; }
@@ -83,6 +83,7 @@
     <input type="text" id="q" placeholder="検索 (JAN・商品名・ジャンル)">
     <button class="sec" onclick="load()">検索</button>
     <span id="count" style="font-size:13px;color:var(--mut)"></span>
+    <button class="sec" onclick="openPrefixTool()">🔎 事業者コードを調べる</button>
     <a class="csv" href="/export.csv">CSVエクスポート ↓</a>
   </div>
   <div id="msg"></div>
@@ -90,6 +91,22 @@
   <div id="empty" class="empty" style="display:none">まだ商品がありません。JANコードを登録してください。</div>
 </main>
 
+<div id="ov2" onclick="if(event.target===this)closePrefixTool()">
+  <div class="modal" style="max-width:560px">
+    <div class="mhead"><h2>事業者コードを調べる</h2><button class="x" onclick="closePrefixTool()">×</button></div>
+    <div style="padding:18px 20px;">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input type="text" id="pf_jan" placeholder="JANコード (8 or 13桁)" inputmode="numeric" style="flex:1">
+        <button onclick="lookupPrefix()">調べる</button>
+      </div>
+      <table class="dt"><tbody id="pf_rows"></tbody></table>
+      <div style="color:#888;font-size:12px;margin-top:10px">
+        ※ ここで出る「事業者コード(先頭7桁/9桁)」は、bulk_import の --base や targets.csv の base に使えます。<br>
+        会社名そのものは <a href="https://vbg.gs1jp.org/" target="_blank">Verified by GS1</a> で確認できます。
+      </div>
+    </div>
+  </div>
+</div>
 <div id="ov" onclick="if(event.target===this)closeDetail()">
   <div class="modal">
     <div class="mhead"><h2 id="m_name">詳細</h2><button class="x" onclick="closeDetail()">×</button></div>
@@ -217,6 +234,33 @@ function openDetail(jan){
 
   document.getElementById("ov").classList.add("show");
 }
+function openPrefixTool(){
+  document.getElementById("pf_rows").innerHTML="";
+  document.getElementById("pf_jan").value=document.getElementById("jan").value.trim();
+  document.getElementById("ov2").classList.add("show");
+  setTimeout(function(){ document.getElementById("pf_jan").focus(); },50);
+  if(document.getElementById("pf_jan").value) lookupPrefix();
+}
+function closePrefixTool(){ document.getElementById("ov2").classList.remove("show"); }
+async function lookupPrefix(){
+  var jan=document.getElementById("pf_jan").value.trim();
+  if(!jan){ return; }
+  try{
+    var r=await fetch("/api/prefix?jan="+encodeURIComponent(jan));
+    var d=await r.json();
+    if(!r.ok){ document.getElementById("pf_rows").innerHTML=`<tr><td>エラー: ${esc(d.error||r.status)}</td></tr>`; return; }
+    var validTxt = d.valid===true ? "✅ 有効(チェック数字OK)" : (d.valid===false ? "⚠ チェック数字が不一致" : "—");
+    var p7 = d.prefix7 ? `<span class="codeno" style="font-size:18px">${esc(d.prefix7)}</span>` : "—";
+    var p9 = d.prefix9 ? `<span class="codeno" style="font-size:18px">${esc(d.prefix9)}</span>` : "—";
+    document.getElementById("pf_rows").innerHTML =
+      row("コード番号", esc(d.jan)) +
+      row("コードタイプ", esc(d.code_type)) +
+      row("有効性", validTxt) +
+      row("事業者コード(先頭7桁)", p7 + ' <span style="color:#888;font-size:12px">多くの食品メーカーはこちら</span>') +
+      row("事業者コード(先頭9桁)", p9);
+  }catch(e){ document.getElementById("pf_rows").innerHTML=`<tr><td>通信エラー: ${esc(""+e)}</td></tr>`; }
+}
+document.addEventListener("keydown", function(e){ if(e.key==="Escape") closePrefixTool(); });
 function closeDetail(){ document.getElementById("ov").classList.remove("show"); }
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDetail(); });
 
@@ -233,6 +277,7 @@ async function load(){
 }
 function msg(t){ document.getElementById("msg").textContent = t; }
 document.getElementById("jan").addEventListener("keydown", e=>{ if(e.key==="Enter") addJan(); });
+document.getElementById("pf_jan").addEventListener("keydown", e=>{ if(e.key==="Enter") lookupPrefix(); });
 document.getElementById("q").addEventListener("keydown", e=>{ if(e.key==="Enter") load(); });
 load();
 </script>

@@ -40,6 +40,27 @@ def _extract_release_date(text):
     return "%s-%s-%s" % (y, mo, d.zfill(2)) if d else "%s-%s" % (y, mo)
 
 
+def _clean_listing_name(name):
+    """店舗の販売タイトルから宣伝文を除去して、できるだけ正式名称に近づける。"""
+    s = name or ""
+    s = re.sub(r"\s*[※*].*$", "", s)                 # ※以降の注釈を削除
+    s = re.sub(r"/[A-Za-z0-9]{1,8}/\s*$", "", s)      # 末尾の /uy/ 等のコード
+    # 先頭が宣伝文(…！/…。)で始まる場合、最初の ! ! 。 までを除去(先頭40字以内)
+    m = re.search(r"[!！。]", s[:40])
+    if m and re.search(r"(送料|ケース|円|ポイント|％|%|無料|限定|クーポン)", s[:m.start()+1]):
+        s = s[m.end():]
+    # 先頭の【…】(…)［…］等の宣伝囲みを繰り返し除去
+    for _ in range(4):
+        s2 = re.sub(r"^\s*[【\[(（［][^】\])）］]{0,40}[】\])）］]\s*", "", s)
+        if s2 == s:
+            break
+        s = s2
+    # 文中の宣伝ワードを除去
+    s = re.sub(r"(送料無料|送料込み?|あす楽対応?|ポイント\d+倍|最大\d+[%％](OFF|オフ)?|期間限定|まとめ買い|父の日|母の日|お中元|お歳暮)", "", s)
+    s = re.sub(r"\s{2,}", " ", s).strip(" \u3000!！・|｜/")
+    return s or (name or "")
+
+
 def _rakuten_headers(access_key, referer):
     h = {"User-Agent": "jancode-system/1.0"}
     if access_key:
@@ -130,7 +151,7 @@ def search_rakuten(jan, app_id, access_key="", hits=5,
         results.append({
             "source": "rakuten",
             "jan": jan,
-            "name": item.get("itemName", ""),
+            "name": _clean_listing_name(item.get("itemName", "")),
             "price": item.get("itemPrice"),
             "url": item.get("itemUrl", ""),
             "image": image,
@@ -175,7 +196,7 @@ def search_yahoo(jan, app_id, results_n=5):
         out.append({
             "source": "yahoo",
             "jan": jan,
-            "name": hit.get("name", ""),
+            "name": _clean_listing_name(hit.get("name", "")),
             "price": hit.get("price"),
             "url": hit.get("url", ""),
             "image": image,

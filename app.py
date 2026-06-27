@@ -244,6 +244,24 @@ def api_search():
     return jsonify({"jan": jan, "results": results, "errors": errors})
 
 
+@app.route("/api/prefix", methods=["GET"])
+def api_prefix():
+    """JANコードからGS1事業者コード(先頭桁)とコード種別・有効性を返す。"""
+    require_api_key()
+    jan = request.args.get("jan", "").strip()
+    if not jan.isdigit():
+        abort(400, description="jan must be digits")
+    valid = janlib.is_valid_jan(jan) if len(jan) == 13 else None
+    return jsonify({
+        "jan": jan,
+        "code_type": janlib.classify_code(jan),
+        "valid": valid,
+        "prefix7": jan[:7] if len(jan) >= 7 else "",
+        "prefix9": jan[:9] if len(jan) >= 9 else "",
+        "country": jan[:2] if len(jan) >= 2 else "",
+    })
+
+
 @app.route("/export.csv")
 def export_csv():
     buf = io.StringIO()

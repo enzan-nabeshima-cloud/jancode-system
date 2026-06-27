@@ -2,10 +2,9 @@
 商品の保存ロジック(画面側 app.py と 一括取り込み bulk_import.py で共通利用)。
 
 優先順位:
-  * 名前/説明/ジャンル/発売日は「主データソース」を選んで採用。
-    楽天/Yahoo/Amazon が値を返せば最優先。無ければ既存(店舗由来)を維持。
-    それも無ければ OFF の日本語データをフォールバック保存。
-  * 画像も楽天最優先。楽天画像→(既存の店舗画像を保護)→OFF画像→既存 の順。
+  * 商品名: OFFの日本語名(正式名称に近い) → 楽天/Yahoo(宣伝文除去済み) → 既存 → OFF
+  * 画像  : 楽天画像 →(既存の店舗画像を保護)→ OFF画像 → 既存
+  * 説明/ジャンル/発売日: 店舗系 → 既存 → OFF
   * data_source 列に主ソースを記録し次回判定に使う。
   * オファー(価格)は今回取得できたソースのぶんだけ差し替え(失敗ソースは温存)。
 """
@@ -34,6 +33,10 @@ def _src_with_name(rows):
     return rows[0].get("source") if rows else ""
 
 
+def _has_jp(s):
+    return any(ord(c) >= 0x3040 for c in (s or ""))
+
+
 def merge_fields(existing, results, jan):
     ex = dict(existing) if existing else {}
     ex_src = ex.get("data_source") or ""
@@ -41,11 +44,11 @@ def merge_fields(existing, results, jan):
     off = [r for r in results if r.get("source") == "openfoodfacts"]
 
     if any(r.get("name") for r in store):
-        prim, src = store, _src_with_name(store)            # 楽天等を最優先
+        prim, src = store, _src_with_name(store)
     elif ex.get("name") and ex_src in STORE_SOURCES:
-        prim, src = None, ex_src                            # 既存(店舗由来)を維持
+        prim, src = None, ex_src
     elif any(r.get("name") for r in off):
-        prim, src = off, "openfoodfacts"                    # OFFをフォールバック
+        prim, src = off, "openfoodfacts"
     else:
         prim, src = None, ex_src
 
@@ -66,6 +69,19 @@ def merge_fields(existing, results, jan):
         out["image"] = ex_img
     else:
         out["image"] = img_off or ex_img
+
+    # 商品名は OFF日本語名 → 楽天等(宣伝除去済み) → 既存 → OFF
+    off_name = _first(off, "name")
+    store_name = _first(store, "name")
+    ex_name = ex.get("name") or ""
+    if off_name and _has_jp(off_name):
+        out["name"] = off_name
+    elif store_name:
+        out["name"] = store_name
+    elif ex_name:
+        out["name"] = ex_name
+    else:
+        out["name"] = off_name or ""
 
     out["code_type"] = janlib.classify_code(jan)
     out["data_source"] = src

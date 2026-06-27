@@ -1,6 +1,6 @@
 name: JANコード一括取得
 
-# 手動実行(パラメータ指定可) と 定期実行(cron) の両方に対応
+# 手動実行専用(単発で特定メーカーを試すとき用)。定期実行は scan_targets.yml が担当
 on:
   workflow_dispatch:
     inputs:
@@ -9,14 +9,12 @@ on:
       end:   { description: "終了(この値は含まない)",  required: false, default: "100000" }
       limit: { description: "この回の最大件数",        required: false, default: "2000" }
       delay: { description: "1件あたり待機秒",         required: false, default: "1.5" }
-  schedule:
-    - cron: "0 18 * * *"   # 毎日 UTC18:00 (= 日本時間 翌3:00)。変更可
 
 permissions:
   contents: write          # 取得後の jan_db.sqlite3 をコミットするため
 
 concurrency:
-  group: bulk-import       # 同時に複数回走らないようにする
+  group: jan-db-write      # DBへ書く処理は同時に走らせない(他ワークフローと共通)
   cancel-in-progress: false
 
 jobs:
