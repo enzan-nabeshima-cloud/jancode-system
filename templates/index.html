@@ -30,6 +30,7 @@
   .name { font-size:13px; line-height:1.4; max-height:3.8em; overflow:hidden; font-weight:600; cursor:pointer; }
   .jan { font-size:12px; color:var(--mut); font-variant-numeric:tabular-nums; }
   .tag { font-size:11px; padding:1px 6px; border-radius:8px; background:#eef; color:#3340a0; }
+  .newbadge { font-size:10px; padding:1px 6px; border-radius:8px; background:#137333; color:#fff; margin-left:4px; }
   .genre { font-size:11px; color:#137333; } .rel { font-size:11px; color:var(--mut); }
   .price { font-size:18px; font-weight:700; color:var(--accent); }
   .offers { font-size:12px; color:var(--mut); } .offers a { color:#1a73e8; text-decoration:none; }
@@ -82,6 +83,7 @@
     <button onclick="addJan()">登録 / 更新</button>
     <input type="text" id="q" placeholder="検索 (JAN・商品名・ジャンル)">
     <button class="sec" onclick="load()">検索</button>
+    <button class="sec" onclick="loadNew()">🆕 新着</button>
     <span id="count" style="font-size:13px;color:var(--mut)"></span>
     <button class="sec" onclick="openPrefixTool()">🔎 事業者コードを調べる</button>
     <a class="csv" href="/export.csv">CSVエクスポート ↓</a>
@@ -105,7 +107,7 @@
         会社名そのものは <a href="https://vbg.gs1jp.org/" target="_blank">Verified by GS1</a> で確認できます。
       </div>
       <h3 style="font-size:13px;margin:18px 0 6px">登録済みメーカー (targets.csv)</h3>
-      <table class="ptable"><thead><tr><th>事業者コード</th><th>会社名</th><th>カナ</th><th></th></tr></thead>
+      <table class="ptable"><thead><tr><th>事業者コード</th><th>会社名</th><th>取得数</th><th>進捗</th><th>状態</th><th></th></tr></thead>
         <tbody id="tg_list"></tbody></table>
     </div>
   </div>
@@ -154,7 +156,7 @@ function card(p){
   return `<div class="card">
     <div class="thumb" onclick="openDetail('${esc(p.jan)}')">${p.image?`<img src="${esc(p.image)}" loading="lazy">`:"画像なし"}</div>
     <div class="body">
-      <div class="row"><span class="jan">${esc(p.jan)} ${ctype}</span></div>
+      <div class="row"><span class="jan">${esc(p.jan)} ${ctype}${isNew(p)?'<span class="newbadge">🆕新着</span>':''}</span></div>
       <div class="name" onclick="openDetail('${esc(p.jan)}')">${esc(p.name)||"(商品名なし)"}</div>
       ${genre}${rel}
       <div class="price">${yen(p.min_price)}</div>
@@ -249,10 +251,16 @@ async function loadTargets(){
   try{
     var r=await fetch("/api/targets"); var list=await r.json();
     var b=document.getElementById("tg_list");
-    if(!list.length){ b.innerHTML='<tr><td colspan="4" style="color:#888">登録なし</td></tr>'; return; }
+    if(!list.length){ b.innerHTML='<tr><td colspan="6" style="color:#888">登録なし</td></tr>'; return; }
     b.innerHTML=list.map(function(t){
+      var st = t.done ? '<span style="color:#137333">✅ 完了</span>'
+                      : (t.scanned>0 ? '進行中' : '未着手');
+      var pct = t.done ? '100%' : (t.percent+'%');
       return '<tr><td style="font-variant-numeric:tabular-nums">'+esc(t.base)+'</td>'+
-        '<td>'+esc(t.company)+'</td><td>'+esc(t.company_kana)+'</td>'+
+        '<td>'+esc(t.company)+'</td>'+
+        '<td style="text-align:right">'+(t.product_count||0)+'</td>'+
+        '<td style="text-align:right">'+pct+'</td>'+
+        '<td>'+st+'</td>'+
         '<td><button class="del" onclick="deleteTarget(\''+esc(t.base)+'\')">削除</button></td></tr>';
     }).join("");
   }catch(e){}
@@ -312,6 +320,16 @@ document.addEventListener("keydown", function(e){ if(e.key==="Escape") closePref
 function closeDetail(){ document.getElementById("ov").classList.remove("show"); }
 document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDetail(); });
 
+function isNew(p){ var t=p.created_at?Date.parse(p.created_at):0; return t && (Date.now()-t) < 14*864e5; }
+async function loadNew(){
+  var r=await fetch(API+"?new=14"); var list=await r.json();
+  for(var k in byJan) delete byJan[k];
+  list.forEach(function(p){ byJan[p.jan]=p; });
+  document.getElementById("empty").style.display = list.length?"none":"block";
+  document.getElementById("count").textContent = "新着 "+list.length+"件";
+  document.getElementById("grid").innerHTML = list.map(card).join("");
+  msg("過去14日に新しく登録された商品を表示中。全件に戻すには「検索」を押してください。");
+}
 async function load(){
   const q = document.getElementById("q").value.trim();
   const r = await fetch(API + (q?("?q="+encodeURIComponent(q)):""));

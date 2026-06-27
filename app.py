@@ -7,7 +7,7 @@ import csv
 import io
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from flask import (Flask, g, jsonify, render_template, request, Response, abort)
 
@@ -72,6 +72,8 @@ def init_db():
             shop TEXT, image TEXT, fetched_at TEXT,
             FOREIGN KEY (jan) REFERENCES products(jan) ON DELETE CASCADE);
         CREATE INDEX IF NOT EXISTS idx_offers_jan ON offers(jan);
+        CREATE TABLE IF NOT EXISTS scan_progress (
+            base TEXT PRIMARY KEY, next_index INTEGER, done INTEGER);
         """
     )
     have = {r[1] for r in db.execute("PRAGMA table_info(products)")}
@@ -130,17 +132,23 @@ def get_product(jan):
     }
 
 
-def list_products(q=""):
+def list_products(q="", new_days=0):
     db = get_db()
+    where, params = [], []
     if q:
         like = "%" + q + "%"
-        rows = db.execute(
-            "SELECT jan FROM products WHERE jan LIKE ? OR name LIKE ? "
-            "OR genre_path LIKE ? ORDER BY updated_at DESC",
-            (like, like, like)).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT jan FROM products ORDER BY updated_at DESC").fetchall()
+        where.append("(jan LIKE ? OR name LIKE ? OR genre_path LIKE ?)")
+        params += [like, like, like]
+    if new_days > 0:
+        cutoff = (datetime.now(timezone.utc).astimezone()
+                  - timedelta(days=new_days)).isoformat(timespec="seconds")
+        where.append("created_at >= ?")
+        params.append(cutoff)
+    sql = "SELECT jan FROM products"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY " + ("created_at DESC" if new_days > 0 else "updated_at DESC")
+    rows = db.execute(sql, params).fetchall()
     return [get_product(r["jan"]) for r in rows]
 
 
@@ -158,7 +166,9 @@ def index():
 @app.route("/api/products", methods=["GET"])
 def api_list():
     require_api_key()
-    return jsonify(list_products(request.args.get("q", "").strip()))
+    nd = request.args.get("new", "")
+    nd = int(nd) if nd.isdigit() else 0
+    return jsonify(list_products(request.args.get("q", "").strip(), nd))
 
 
 @app.route("/api/products", methods=["POST"])
@@ -280,7 +290,24 @@ def _write_targets(rows):
 @app.route("/api/targets", methods=["GET"])
 def api_targets_list():
     require_api_key()
-    return jsonify(_read_targets())
+    db = get_db()
+    out = []
+    for t in _read_targets():
+        base = t["base"]
+        fill = 12 - len(base)
+        maxn = 10 ** fill if fill >= 0 else 1
+        pr = db.execute("SELECT next_index,done FROM scan_progress "
+                        "WHERE base=?", (base,)).fetchone()
+        nxt = pr["next_index"] if pr else 0
+        done = bool(pr["done"]) if pr else False
+        cnt = db.execute("SELECT COUNT(*) FROM products WHERE jan LIKE ?",
+                         (base + "%",)).fetchone()[0]
+        item = dict(t)
+        item.update({"scanned": nxt, "total": maxn, "done": done,
+                     "percent": round(nxt / maxn * 100, 1) if maxn else 0,
+                     "product_count": cnt})
+        out.append(item)
+    return jsonify(out)
 
 
 @app.route("/api/targets", methods=["POST"])

@@ -1,18 +1,20 @@
-name: メーカー一覧から一括取得
+name: 新商品チェック
 
 on:
   workflow_dispatch:
     inputs:
-      limit: { description: "この回の最大取得件数", required: false, default: "2000" }
-      delay: { description: "1件あたり待機秒",      required: false, default: "1.5" }
+      mode:  { description: "frontier(効率) または full(網羅)", required: false, default: "frontier" }
+      limit: { description: "この回の最大再確認件数", required: false, default: "2000" }
+      delay: { description: "1件あたり待機秒", required: false, default: "1.5" }
   schedule:
-    - cron: "0 */3 * * *"   # 3時間ごと(1日8回)。UTC基準。頻度はここで調整
+    - cron: "0 21 * * *"    # 毎日 (JST 6:00) → frontier(効率重視)
+    - cron: "0 20 1 * *"    # 毎月1日 (JST 5:00) → full(網羅重視)
 
 permissions:
   contents: write
 
 concurrency:
-  group: jan-db-write      # DBへ書く処理は同時に走らせない(他ワークフローと共通)
+  group: jan-db-write       # 本体スキャンとDB書き込みが重ならないよう共通
   cancel-in-progress: false
 
 jobs:
@@ -26,20 +28,22 @@ jobs:
           python-version: "3.12"
       - name: 依存インストール
         run: pip install -r requirements.txt
-      - name: メーカー一覧から取得
+      - name: 新商品チェック
         env:
           RAKUTEN_APP_ID:     ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
           YAHOO_APP_ID:       ${{ secrets.YAHOO_APP_ID }}
           APP_PUBLIC_URL:     ${{ secrets.APP_PUBLIC_URL }}
           OFF_CONTACT:        ${{ secrets.OFF_CONTACT }}
+          # 月1の cron は full、それ以外(毎日cron/手動)は frontier
+          MODE:  ${{ github.event.inputs.mode || (github.event.schedule == '0 20 1 * *' && 'full' || 'frontier') }}
           LIMIT: ${{ github.event.inputs.limit || vars.LIMIT || '2000' }}
           DELAY: ${{ github.event.inputs.delay || vars.DELAY || '1.5' }}
-        run: python scan_targets.py --limit "$LIMIT" --delay "$DELAY"
+        run: python scan_new.py --mode "$MODE" --limit "$LIMIT" --delay "$DELAY"
       - name: 取得結果(DB)をコミット
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -f jan_db.sqlite3 targets.csv
-          git commit -m "data: メーカー一覧取得 $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "変更なし"
+          git add -f jan_db.sqlite3
+          git commit -m "data: 新商品チェック($MODE) $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "変更なし"
           git push
