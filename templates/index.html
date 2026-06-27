@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JANコード商品データベース</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js"></script>
+<style>
+  :root { --bd:#e2e2e6; --fg:#1a1a1a; --mut:#6b7280; --accent:#bf0000; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+         color:var(--fg); background:#f6f6f8; }
+  header { background:#fff; border-bottom:1px solid var(--bd); padding:16px 24px; position:sticky; top:0; z-index:10; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .badges span { font-size:12px; padding:2px 8px; border-radius:10px; margin-right:6px; }
+  .on { background:#e6f4ea; color:#137333; } .off { background:#fce8e6; color:#a50e0e; }
+  main { max-width:1180px; margin:0 auto; padding:20px 24px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; align-items:center; }
+  input[type=text]{ padding:10px 12px; border:1px solid var(--bd); border-radius:8px; font-size:14px; }
+  #jan { width:200px; } #q { width:240px; }
+  button { padding:10px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-size:14px; cursor:pointer; }
+  button.sec { background:#fff; color:var(--fg); border:1px solid var(--bd); }
+  a.csv { margin-left:auto; align-self:center; font-size:13px; color:var(--accent); }
+  #msg { font-size:13px; color:var(--mut); margin-bottom:12px; min-height:18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:16px; }
+  .card { background:#fff; border:1px solid var(--bd); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+  .thumb { height:170px; background:#fafafa; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .thumb img { max-height:100%; max-width:100%; object-fit:contain; }
+  .body { padding:12px; flex:1; display:flex; flex-direction:column; gap:6px; }
+  .name { font-size:13px; line-height:1.4; max-height:3.8em; overflow:hidden; font-weight:600; cursor:pointer; }
+  .jan { font-size:12px; color:var(--mut); font-variant-numeric:tabular-nums; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:8px; background:#eef; color:#3340a0; }
+  .genre { font-size:11px; color:#137333; } .rel { font-size:11px; color:var(--mut); }
+  .price { font-size:18px; font-weight:700; color:var(--accent); }
+  .offers { font-size:12px; color:var(--mut); } .offers a { color:#1a73e8; text-decoration:none; }
+  .row { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .acts { display:flex; gap:10px; }
+  .lnk { font-size:12px; color:#1a73e8; background:none; padding:4px 0; cursor:pointer; border:0; }
+  .del { font-size:12px; color:var(--mut); background:none; padding:4px; cursor:pointer; }
+  .empty { color:var(--mut); text-align:center; padding:60px 0; }
+  .src { display:inline-block; font-size:11px; padding:1px 6px; border-radius:8px; margin-right:4px; }
+  .src.rakuten{background:#fdecec;color:#bf0000;} .src.yahoo{background:#fde8ef;color:#c4007a;}
+  .src.amazon{background:#fff3e0;color:#e47911;} .src.openfoodfacts{background:#eaf6ea;color:#2a7d2a;}
+  #ov { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:flex-start; justify-content:center; z-index:50; overflow:auto; padding:30px 16px; }
+  #ov.show { display:flex; }
+  .modal { background:#fff; border-radius:14px; max-width:820px; width:100%; }
+  .mhead { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--bd); }
+  .mhead h2 { font-size:16px; margin:0; }
+  .x { background:none; color:var(--mut); font-size:20px; padding:0 6px; }
+  .dt { width:100%; border-collapse:collapse; font-size:14px; }
+  .dt th { width:140px; text-align:left; vertical-align:top; color:#444; font-weight:600; background:#f7f7f9; border:1px solid #ececf0; padding:10px 12px; white-space:nowrap; }
+  .dt td { border:1px solid #ececf0; padding:10px 12px; }
+  .dimg { text-align:center; } .dimg img { max-height:300px; max-width:100%; object-fit:contain; }
+  .codeno { color:#1a8f3c; font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .pbtns { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .pbtn { display:flex; align-items:center; gap:8px; border:1px solid var(--bd); border-radius:8px; padding:10px 14px; color:#1a73e8; text-decoration:none; font-size:13px; background:#fff; }
+  .pbtn:hover { background:#f3f7ff; }
+  .glink { color:#1a73e8; text-decoration:none; } .glink:hover { text-decoration:underline; }
+  .ptable { width:100%; border-collapse:collapse; font-size:13px; }
+  .ptable th,.ptable td { border-bottom:1px solid #eee; padding:6px 8px; text-align:left; }
+  .ptable a { color:#1a73e8; text-decoration:none; }
+  .ddesc { font-size:13px; white-space:pre-wrap; max-height:200px; overflow:auto; }
+  .edin { padding:6px 8px; border:1px solid var(--bd); border-radius:6px; font-size:13px; width:240px; max-width:55%; }
+  .vbg { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--bd); border-radius:6px; padding:6px 10px; color:#1a73e8; text-decoration:none; font-size:12px; margin-left:8px; }
+  .savebtn { color:#fff; background:var(--accent); border-radius:6px; padding:6px 12px; cursor:pointer; border:0; font-size:13px; }
+  @media(max-width:680px){ .pbtns{ grid-template-columns:1fr; } .dt th{ width:104px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>JANコード商品データベース</h1>
+  <div class="badges">
+    <span class="{{ 'on' if configured.rakuten else 'off' }}">楽天 {{ '接続' if configured.rakuten else '未設定' }}</span>
+    <span class="{{ 'on' if configured.yahoo else 'off' }}">Yahoo {{ '接続' if configured.yahoo else '未設定' }}</span>
+    <span class="{{ 'on' if configured.amazon else 'off' }}">Amazon {{ '接続' if configured.amazon else '未設定' }}</span>
+    <span class="{{ 'on' if configured.off else 'off' }}">OpenFoodFacts {{ '有効' if configured.off else '無効' }}</span>
+  </div>
+</header>
+<main>
+  <div class="bar">
+    <input type="text" id="jan" placeholder="JANコード (8 or 13桁)" inputmode="numeric">
+    <button onclick="addJan()">登録 / 更新</button>
+    <input type="text" id="q" placeholder="検索 (JAN・商品名・ジャンル)">
+    <button class="sec" onclick="load()">検索</button>
+    <span id="count" style="font-size:13px;color:var(--mut)"></span>
+    <a class="csv" href="/export.csv">CSVエクスポート ↓</a>
+  </div>
+  <div id="msg"></div>
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" style="display:none">まだ商品がありません。JANコードを登録してください。</div>
+</main>
+
+<div id="ov" onclick="if(event.target===this)closeDetail()">
+  <div class="modal">
+    <div class="mhead"><h2 id="m_name">詳細</h2><button class="x" onclick="closeDetail()">×</button></div>
+    <div style="padding:18px 20px;"><table class="dt"><tbody id="m_rows"></tbody></table></div>
+  </div>
+</div>
+
+<script>
+const API = "/api/products";
+const byJan = {};
+function yen(n){ return n==null ? "—" : "¥" + Number(n).toLocaleString(); }
+function esc(s){ return (s||"").replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function addJan(){
+  const jan = document.getElementById("jan").value.trim();
+  if(!jan){ return; }
+  msg("取得中… (" + jan + ")");
+  try{
+    const r = await fetch(API, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({jan})});
+    const d = await r.json();
+    if(!r.ok){ msg("エラー: " + (d.error||r.status)); return; }
+    document.getElementById("jan").value = "";
+    msg((d.errors&&d.errors.length) ? ("登録しました（警告: "+d.errors.join(" / ")+"）") : "登録しました。");
+    load();
+  }catch(e){ msg("通信エラー: " + e); }
+}
+
+async function del(jan){
+  if(!confirm(jan + " を削除しますか？")) return;
+  await fetch(API + "/" + jan, {method:"DELETE"});
+  closeDetail(); load();
+}
+
+function card(p){
+  const offers = (p.offers||[]).map(o =>
+    `<div><span class="src ${o.source}">${o.source}</span>`+
+    `${o.url?`<a href="${esc(o.url)}" target="_blank">${yen(o.price)}</a>`:yen(o.price)}`+
+    `${o.shop?` <span>${esc(o.shop)}</span>`:""}</div>`).join("");
+  const genre = p.genre_path?`<div class="genre">🏷 ${esc(p.genre_path)}</div>`:"";
+  const rel = p.release_date?`<div class="rel">発売日: ${esc(p.release_date)}</div>`:"";
+  const ctype = p.code_type?`<span class="tag">${esc(p.code_type)}</span>`:"";
+  return `<div class="card">
+    <div class="thumb" onclick="openDetail('${esc(p.jan)}')">${p.image?`<img src="${esc(p.image)}" loading="lazy">`:"画像なし"}</div>
+    <div class="body">
+      <div class="row"><span class="jan">${esc(p.jan)} ${ctype}</span></div>
+      <div class="name" onclick="openDetail('${esc(p.jan)}')">${esc(p.name)||"(商品名なし)"}</div>
+      ${genre}${rel}
+      <div class="price">${yen(p.min_price)}</div>
+      <div class="offers">${offers||"オファーなし"}</div>
+      <div class="row acts">
+        <button class="lnk" onclick="openDetail('${esc(p.jan)}')">詳細を見る</button>
+        <button class="del" onclick="del('${esc(p.jan)}')">削除</button>
+      </div>
+    </div></div>`;
+}
+
+function row(label, html){ return html ? `<tr><th>${label}</th><td>${html}</td></tr>` : ""; }
+function genreLinks(path){
+  if(!path) return "";
+  return path.split(">").map(s=>s.trim()).filter(Boolean).map(seg=>
+    `<a class="glink" href="#" onclick="closeDetail();document.getElementById('q').value='${esc(seg)}';load();return false;">${esc(seg)}</a>`
+  ).join(' <span style="color:#aaa">&gt;</span> ');
+}
+function editRow(label, id, val, ph){
+  return `<tr><th>${label}</th><td><input class="edin" id="${id}" value="${esc(val)}" placeholder="${ph}"></td></tr>`;
+}
+
+function copyJan(jan){ try{ navigator.clipboard.writeText(jan); msg("JAN "+jan+" をコピーしました。Verified by GS1の検索窓に貼り付けてください。"); }catch(e){} }
+
+async function saveDetail(jan){
+  const company=document.getElementById("ed_company").value.trim();
+  const kana=document.getElementById("ed_company_kana").value.trim();
+  const release=document.getElementById("ed_release").value.trim();
+  try{
+    const r=await fetch(API+"/"+jan,{method:"PATCH",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({company:company,company_kana:kana,release_date:release})});
+    const d=await r.json();
+    if(!r.ok){ alert("保存エラー: "+(d.error||r.status)); return; }
+    byJan[jan]=d;
+    let extra="";
+    if(company && jan.length===13){
+      try{
+        const r2=await fetch(API+"/apply-company",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({prefix:jan.slice(0,7),company:company,company_kana:kana,only_empty:true})});
+        const d2=await r2.json();
+        if(r2.ok && d2.updated>0) extra=" / 同じメーカー(先頭7桁 "+jan.slice(0,7)+")の "+d2.updated+"件にも自動設定しました";
+      }catch(e){}
+    }
+    openDetail(jan); load(); msg("保存しました。"+extra);
+  }catch(e){ alert("通信エラー: "+e); }
+}
+function openDetail(jan){
+  const p = byJan[jan]; if(!p) return;
+  document.getElementById("m_name").textContent = p.name || "(商品名なし)";
+  const price = p.min_price!=null ? (yen(p.min_price)+(p.max_price!=p.min_price?(" 〜 "+yen(p.max_price)):"")) : "";
+  const offers = (p.offers||[]).map(o=>
+    `<tr><td><span class="src ${o.source}">${o.source}</span></td><td>${yen(o.price)}</td>`+
+    `<td>${esc(o.shop)||"—"}</td><td>${o.url?`<a href="${esc(o.url)}" target="_blank">商品ページ ↗</a>`:"—"}</td></tr>`
+  ).join("") || `<tr><td colspan="4">オファーなし</td></tr>`;
+  const offTable = `<table class="ptable"><thead><tr><th>サイト</th><th>価格</th><th>店舗</th><th>リンク</th></tr></thead><tbody>${offers}</tbody></table>`;
+  const vbg = `<a class="vbg" href="https://vbg.gs1jp.org/" target="_blank" onclick="copyJan('${esc(p.jan)}')">🔍 Verified by GS1で確認</a>`;
+
+  const rows = [
+    row("商品画像", p.image?`<div class="dimg"><img src="${esc(p.image)}"></div>`:"画像なし"),
+    row("コード番号", `<span class="codeno">${esc(p.jan)}</span>`),
+    row("コードタイプ", esc(p.code_type)),
+    row("JANシンボル", `<svg id="bc"></svg>`),
+    row("商品名", esc(p.name)),
+    `<tr><th>会社名</th><td><input class="edin" id="ed_company" value="${esc(p.company)}" placeholder="(手入力)">${vbg}</td></tr>`,
+    editRow("会社名カナ", "ed_company_kana", p.company_kana, "(手入力)"),
+    `<tr><th>発売日</th><td><input class="edin" id="ed_release" value="${esc(p.release_date)}" placeholder="例: 2014-09-15"> <button class="savebtn" onclick="saveDetail('${esc(p.jan)}')">会社名・カナ・発売日を保存</button></td></tr>`,
+    row("商品ジャンル", genreLinks(p.genre_path)),
+    row("価格帯", price),
+    row("各サイト価格", offTable),
+    row("商品説明", p.description?`<div class="ddesc">${esc(p.description)}</div>`:""),
+    row("メモ", esc(p.note)),
+    row("更新日時", esc((p.updated_at||"").replace("T"," ").slice(0,19))),
+  ].join("");
+  document.getElementById("m_rows").innerHTML = rows;
+
+  try{
+    const fmt = p.jan.length===13?"EAN13":(p.jan.length===12?"UPC":(p.jan.length===8?"EAN8":"CODE128"));
+    JsBarcode("#bc", p.jan, {format:fmt, width:2, height:60, fontSize:14, margin:6});
+  }catch(e){ try{ JsBarcode("#bc", p.jan, {format:"CODE128", height:60}); }catch(_){} }
+
+  document.getElementById("ov").classList.add("show");
+}
+function closeDetail(){ document.getElementById("ov").classList.remove("show"); }
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeDetail(); });
+
+async function load(){
+  const q = document.getElementById("q").value.trim();
+  const r = await fetch(API + (q?("?q="+encodeURIComponent(q)):""));
+  const list = await r.json();
+  for(const k in byJan) delete byJan[k];
+  list.forEach(p=> byJan[p.jan]=p);
+  const grid = document.getElementById("grid");
+  document.getElementById("empty").style.display = list.length? "none":"block";
+  document.getElementById("count").textContent = list.length? (list.length+"件"):"";
+  grid.innerHTML = list.map(card).join("");
+}
+function msg(t){ document.getElementById("msg").textContent = t; }
+document.getElementById("jan").addEventListener("keydown", e=>{ if(e.key==="Enter") addJan(); });
+document.getElementById("q").addEventListener("keydown", e=>{ if(e.key==="Enter") load(); });
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+.env
+__pycache__/
+venv/
+*.sqlite3
+!jan_db.sqlite3
