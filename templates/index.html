@@ -41,8 +41,8 @@
   .src { display:inline-block; font-size:11px; padding:1px 6px; border-radius:8px; margin-right:4px; }
   .src.rakuten{background:#fdecec;color:#bf0000;} .src.yahoo{background:#fde8ef;color:#c4007a;}
   .src.amazon{background:#fff3e0;color:#e47911;} .src.openfoodfacts{background:#eaf6ea;color:#2a7d2a;}
-  #ov { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:flex-start; justify-content:center; z-index:50; overflow:auto; padding:30px 16px; }
-  #ov.show { display:flex; }
+  #ov, #ov2 { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; align-items:flex-start; justify-content:center; z-index:50; overflow:auto; padding:30px 16px; }
+  #ov.show, #ov2.show { display:flex; }
   .modal { background:#fff; border-radius:14px; max-width:820px; width:100%; }
   .mhead { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--bd); }
   .mhead h2 { font-size:16px; margin:0; }
@@ -97,13 +97,16 @@
     <div style="padding:18px 20px;">
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <input type="text" id="pf_jan" placeholder="JANコード (8 or 13桁)" inputmode="numeric" style="flex:1">
-        <button onclick="lookupPrefix()">調べる</button>
+        <button onclick="findPrefix()">調べる</button>
       </div>
       <table class="dt"><tbody id="pf_rows"></tbody></table>
       <div style="color:#888;font-size:12px;margin-top:10px">
         ※ ここで出る「事業者コード(先頭7桁/9桁)」は、bulk_import の --base や targets.csv の base に使えます。<br>
         会社名そのものは <a href="https://vbg.gs1jp.org/" target="_blank">Verified by GS1</a> で確認できます。
       </div>
+      <h3 style="font-size:13px;margin:18px 0 6px">登録済みメーカー (targets.csv)</h3>
+      <table class="ptable"><thead><tr><th>事業者コード</th><th>会社名</th><th>カナ</th><th></th></tr></thead>
+        <tbody id="tg_list"></tbody></table>
     </div>
   </div>
 </div>
@@ -238,11 +241,48 @@ function openPrefixTool(){
   document.getElementById("pf_rows").innerHTML="";
   document.getElementById("pf_jan").value=document.getElementById("jan").value.trim();
   document.getElementById("ov2").classList.add("show");
+  loadTargets();
   setTimeout(function(){ document.getElementById("pf_jan").focus(); },50);
-  if(document.getElementById("pf_jan").value) lookupPrefix();
+  if(document.getElementById("pf_jan").value) findPrefix();
+}
+async function loadTargets(){
+  try{
+    var r=await fetch("/api/targets"); var list=await r.json();
+    var b=document.getElementById("tg_list");
+    if(!list.length){ b.innerHTML='<tr><td colspan="4" style="color:#888">登録なし</td></tr>'; return; }
+    b.innerHTML=list.map(function(t){
+      return '<tr><td style="font-variant-numeric:tabular-nums">'+esc(t.base)+'</td>'+
+        '<td>'+esc(t.company)+'</td><td>'+esc(t.company_kana)+'</td>'+
+        '<td><button class="del" onclick="deleteTarget(\''+esc(t.base)+'\')">削除</button></td></tr>';
+    }).join("");
+  }catch(e){}
+}
+async function deleteTarget(base){
+  if(!confirm("targets.csv から "+base+" を削除しますか？")) return;
+  try{
+    var r=await fetch("/api/targets/"+base,{method:"DELETE"});
+    if(!r.ok){ alert("削除エラー"); return; }
+    loadTargets();
+  }catch(e){ alert("通信エラー: "+e); }
+}
+async function addTarget(){
+  var sel=document.querySelector('input[name=pf_base]:checked');
+  if(!sel){ alert("baseを選んでください"); return; }
+  var base=sel.value;
+  var company=document.getElementById("tg_company").value.trim();
+  var kana=document.getElementById("tg_kana").value.trim();
+  try{
+    var r=await fetch("/api/targets",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({base:base,company:company,company_kana:kana})});
+    var d=await r.json();
+    if(!r.ok){ alert("追加エラー: "+(d.error||r.status)); return; }
+    msg((d.added?"targets.csvに追加":"targets.csvを更新")+"しました（base="+base+"）。GitHub Desktopで Commit→Push すると本番(Actions)にも反映されます。");
+    document.getElementById("tg_company").value=""; document.getElementById("tg_kana").value="";
+    loadTargets(); load();
+  }catch(e){ alert("通信エラー: "+e); }
 }
 function closePrefixTool(){ document.getElementById("ov2").classList.remove("show"); }
-async function lookupPrefix(){
+async function findPrefix(){
   var jan=document.getElementById("pf_jan").value.trim();
   if(!jan){ return; }
   try{
@@ -252,12 +292,20 @@ async function lookupPrefix(){
     var validTxt = d.valid===true ? "✅ 有効(チェック数字OK)" : (d.valid===false ? "⚠ チェック数字が不一致" : "—");
     var p7 = d.prefix7 ? `<span class="codeno" style="font-size:18px">${esc(d.prefix7)}</span>` : "—";
     var p9 = d.prefix9 ? `<span class="codeno" style="font-size:18px">${esc(d.prefix9)}</span>` : "—";
+    var sc = esc(d.suggested_company||"");
+    var addForm =
+      row("追加先のbase", `<label><input type="radio" name="pf_base" value="${esc(d.prefix7)}" checked> 先頭7桁(${esc(d.prefix7)})</label>`+
+        (d.prefix9?` &nbsp; <label><input type="radio" name="pf_base" value="${esc(d.prefix9)}"> 先頭9桁(${esc(d.prefix9)})</label>`:"")) +
+      row("会社名", `<input class="edin" id="tg_company" value="${sc}" placeholder="会社名(任意)"><a class="vbg" href="https://vbg.gs1jp.org/" target="_blank" onclick="copyJan('${esc(d.jan)}')">🔍 Verified by GS1で確認</a>`) +
+      row("会社名カナ", `<input class="edin" id="tg_kana" placeholder="(任意)">`) +
+      `<tr><th></th><td><button class="savebtn" onclick="addTarget()">この事業者コードを targets.csv に追加</button></td></tr>`;
     document.getElementById("pf_rows").innerHTML =
       row("コード番号", esc(d.jan)) +
       row("コードタイプ", esc(d.code_type)) +
       row("有効性", validTxt) +
       row("事業者コード(先頭7桁)", p7 + ' <span style="color:#888;font-size:12px">多くの食品メーカーはこちら</span>') +
-      row("事業者コード(先頭9桁)", p9);
+      row("事業者コード(先頭9桁)", p9) +
+      addForm;
   }catch(e){ document.getElementById("pf_rows").innerHTML=`<tr><td>通信エラー: ${esc(""+e)}</td></tr>`; }
 }
 document.addEventListener("keydown", function(e){ if(e.key==="Escape") closePrefixTool(); });
@@ -277,9 +325,8 @@ async function load(){
 }
 function msg(t){ document.getElementById("msg").textContent = t; }
 document.getElementById("jan").addEventListener("keydown", e=>{ if(e.key==="Enter") addJan(); });
-document.getElementById("pf_jan").addEventListener("keydown", e=>{ if(e.key==="Enter") lookupPrefix(); });
+document.getElementById("pf_jan").addEventListener("keydown", e=>{ if(e.key==="Enter") findPrefix(); });
 document.getElementById("q").addEventListener("keydown", e=>{ if(e.key==="Enter") load(); });
 load();
 </script>
-</body>
-</html>
+<

@@ -244,6 +244,82 @@ def api_search():
     return jsonify({"jan": jan, "results": results, "errors": errors})
 
 
+TARGETS_PATH = os.path.join(BASE_DIR, "targets.csv")
+
+
+def _read_targets():
+    rows = []
+    if os.path.exists(TARGETS_PATH):
+        import csv as _csv
+        with open(TARGETS_PATH, encoding="utf-8") as fh:
+            lines = [ln for ln in fh if ln.strip() and not ln.lstrip().startswith("#")]
+        for row in _csv.DictReader(lines):
+            base = (row.get("base") or "").strip()
+            if base.isdigit():
+                rows.append({"base": base,
+                             "company": (row.get("company") or "").strip(),
+                             "company_kana": (row.get("company_kana") or "").strip()})
+    return rows
+
+
+def _write_targets(rows):
+    import csv as _csv
+    import io as _io
+    head = ("# 取得対象メーカー一覧。1行=1メーカー。先頭#はコメント。\n"
+            "# base = GS1事業者コード(先頭桁), company = 会社名, "
+            "company_kana = 会社名カナ(任意)\n")
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["base", "company", "company_kana"])
+    for r in rows:
+        w.writerow([r["base"], r["company"], r["company_kana"]])
+    with open(TARGETS_PATH, "w", encoding="utf-8", newline="") as fh:
+        fh.write(head + buf.getvalue())
+
+
+@app.route("/api/targets", methods=["GET"])
+def api_targets_list():
+    require_api_key()
+    return jsonify(_read_targets())
+
+
+@app.route("/api/targets", methods=["POST"])
+def api_targets_add():
+    require_api_key()
+    data = request.get_json(silent=True) or {}
+    base = (data.get("base") or "").strip()
+    if not base.isdigit() or not (5 <= len(base) <= 13):
+        abort(400, description="base must be 5-13 digit number")
+    company = (data.get("company") or "").strip()
+    kana = (data.get("company_kana") or "").strip()
+    rows = _read_targets()
+    found = False
+    for r in rows:
+        if r["base"] == base:
+            r["company"], r["company_kana"] = company, kana
+            found = True
+    if not found:
+        rows.append({"base": base, "company": company, "company_kana": kana})
+    _write_targets(rows)
+    # 既存商品(同じ事業者コード・会社名が空)にも会社名を反映
+    if company:
+        db = get_db()
+        db.execute("UPDATE products SET company=?,company_kana=?,updated_at=? "
+                   "WHERE jan LIKE ? AND (company IS NULL OR company='')",
+                   (company, kana, now_iso(), base + "%"))
+        db.commit()
+    return jsonify({"targets": rows, "added": not found, "base": base})
+
+
+@app.route("/api/targets/<base>", methods=["DELETE"])
+def api_targets_del(base):
+    """targets.csv から指定の事業者コードの行を削除する。"""
+    require_api_key()
+    rows = [r for r in _read_targets() if r["base"] != base]
+    _write_targets(rows)
+    return jsonify({"targets": rows})
+
+
 @app.route("/api/prefix", methods=["GET"])
 def api_prefix():
     """JANコードからGS1事業者コード(先頭桁)とコード種別・有効性を返す。"""
@@ -252,6 +328,14 @@ def api_prefix():
     if not jan.isdigit():
         abort(400, description="jan must be digits")
     valid = janlib.is_valid_jan(jan) if len(jan) == 13 else None
+    suggested = ""
+    if len(jan) >= 7:
+        row = get_db().execute(
+            "SELECT company,company_kana FROM products WHERE jan LIKE ? "
+            "AND company IS NOT NULL AND company<>'' LIMIT 1",
+            (jan[:7] + "%",)).fetchone()
+        if row:
+            suggested = row["company"]
     return jsonify({
         "jan": jan,
         "code_type": janlib.classify_code(jan),
@@ -259,6 +343,7 @@ def api_prefix():
         "prefix7": jan[:7] if len(jan) >= 7 else "",
         "prefix9": jan[:9] if len(jan) >= 9 else "",
         "country": jan[:2] if len(jan) >= 2 else "",
+        "suggested_company": suggested,
     })
 
 
