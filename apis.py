@@ -114,7 +114,8 @@ def rakuten_genre_path(genre_id, app_id, access_key, referer):
 # 楽天市場 商品検索API
 # --------------------------------------------------------------------------
 def search_rakuten(jan, app_id, access_key="", hits=5,
-                   referer="http://localhost:5057", resolve_genre=True):
+                   referer="http://localhost:5057", resolve_genre=True,
+                   affiliate_id=""):
     if not app_id:
         return []
     params = {
@@ -125,6 +126,8 @@ def search_rakuten(jan, app_id, access_key="", hits=5,
         "imageFlag": 1,
         "formatVersion": 2,
     }
+    if affiliate_id:
+        params["affiliateId"] = affiliate_id
     try:
         r = requests.get(RAKUTEN_ITEM_URL, params=params,
                          headers=_rakuten_headers(access_key, referer),
@@ -153,7 +156,7 @@ def search_rakuten(jan, app_id, access_key="", hits=5,
             "jan": jan,
             "name": _clean_listing_name(item.get("itemName", "")),
             "price": item.get("itemPrice"),
-            "url": item.get("itemUrl", ""),
+            "url": item.get("affiliateUrl") or item.get("itemUrl", ""),
             "image": image,
             "shop": item.get("shopName", ""),
             "description": caption,
@@ -294,7 +297,8 @@ def search_all(jan, cfg):
     for items in (
         search_rakuten(jan, cfg.get("RAKUTEN_APP_ID"),
                        access_key=cfg.get("RAKUTEN_ACCESS_KEY", ""),
-                       referer=cfg.get("APP_PUBLIC_URL", "http://localhost:5057")),
+                       referer=cfg.get("APP_PUBLIC_URL", "http://localhost:5057"),
+                       affiliate_id=cfg.get("RAKUTEN_AFFILIATE_ID", "")),
         search_yahoo(jan, cfg.get("YAHOO_APP_ID")),
         (search_openfoodfacts(jan, cfg.get("OFF_CONTACT", "jancode-system"))
          if str(cfg.get("OFF_ENABLED", "1")) not in ("0", "false", "") else []),

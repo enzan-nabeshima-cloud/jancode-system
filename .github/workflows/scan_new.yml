@@ -30,6 +30,7 @@ jobs:
         run: pip install -r requirements.txt
       - name: 新商品チェック
         env:
+          PYTHONUNBUFFERED: "1"
           RAKUTEN_APP_ID:     ${{ secrets.RAKUTEN_APP_ID }}
           RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
           YAHOO_APP_ID:       ${{ secrets.YAHOO_APP_ID }}
@@ -45,5 +46,11 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -f jan_db.sqlite3
-          git commit -m "data: 新商品チェック($MODE) $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "変更なし"
-          git push
+          git commit -m "data: 新商品チェック($MODE) $(date -u +%Y-%m-%dT%H:%M:%SZ)" || { echo "変更なし"; exit 0; }
+          for i in 1 2 3 4 5; do
+            git fetch origin main || true
+            git merge -X ours origin/main -m "merge remote (keep scanned DB)" || true
+            if git push origin main; then echo "pushed"; exit 0; fi
+            echo "push retry $i"; sleep 5
+          done
+          echo "push failed"; exit 1

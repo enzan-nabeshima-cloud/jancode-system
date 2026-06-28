@@ -65,6 +65,11 @@
   .vbg { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--bd); border-radius:6px; padding:6px 10px; color:#1a73e8; text-decoration:none; font-size:12px; margin-left:8px; }
   .savebtn { color:#fff; background:var(--accent); border-radius:6px; padding:6px 12px; cursor:pointer; border:0; font-size:13px; }
   @media(max-width:680px){ .pbtns{ grid-template-columns:1fr; } .dt th{ width:104px; } }
+  /* ?jan= ディープリンク: 詳細だけを単独表示 */
+  body.detail-only header, body.detail-only main { display:none; }
+  body.detail-only #ov { background:#f6f6f8; padding:24px 16px; }
+  body.detail-only #ov .modal { box-shadow:0 1px 4px rgba(0,0,0,.08); }
+  body.detail-only #ov .x { display:none; }
 </style>
 </head>
 <body>
@@ -91,6 +96,11 @@
   <div id="msg"></div>
   <div id="grid" class="grid"></div>
   <div id="empty" class="empty" style="display:none">まだ商品がありません。JANコードを登録してください。</div>
+  <footer style="margin-top:30px;padding:16px 0;border-top:1px solid var(--bd);font-size:12px;color:var(--mut);text-align:center">
+    価格・在庫・画像は取得時点のものです。最新は各商品ページでご確認ください。<br>
+    Supported by <a href="https://developers.rakuten.com/" target="_blank" style="color:#1a73e8">Rakuten Developers</a>
+    ／ Powered by <a href="https://openfoodfacts.org/" target="_blank" style="color:#1a73e8">Open Food Facts</a> (CC BY-SA)
+  </footer>
 </main>
 
 <div id="ov2" onclick="if(event.target===this)closePrefixTool()">
@@ -121,6 +131,13 @@
 
 <script>
 const API = "/api/products";
+const AFFILIATE_ID = "{{ affiliate_id }}";
+function rkLink(url, source){
+  if(source==="rakuten" && AFFILIATE_ID && url && url.indexOf("afl.rakuten")<0){
+    return "https://hb.afl.rakuten.co.jp/hgc/"+AFFILIATE_ID+"/?pc="+encodeURIComponent(url)+"&m="+encodeURIComponent(url);
+  }
+  return url;
+}
 const byJan = {};
 function yen(n){ return n==null ? "—" : "¥" + Number(n).toLocaleString(); }
 function esc(s){ return (s||"").replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
@@ -148,7 +165,7 @@ async function del(jan){
 function card(p){
   const offers = (p.offers||[]).map(o =>
     `<div><span class="src ${o.source}">${o.source}</span>`+
-    `${o.url?`<a href="${esc(o.url)}" target="_blank">${yen(o.price)}</a>`:yen(o.price)}`+
+    `${o.url?`<a href="${esc(rkLink(o.url,o.source))}" target="_blank">${yen(o.price)}</a>`:yen(o.price)}`+
     `${o.shop?` <span>${esc(o.shop)}</span>`:""}</div>`).join("");
   const genre = p.genre_path?`<div class="genre">🏷 ${esc(p.genre_path)}</div>`:"";
   const rel = p.release_date?`<div class="rel">発売日: ${esc(p.release_date)}</div>`:"";
@@ -209,7 +226,7 @@ function openDetail(jan){
   const price = p.min_price!=null ? (yen(p.min_price)+(p.max_price!=p.min_price?(" 〜 "+yen(p.max_price)):"")) : "";
   const offers = (p.offers||[]).map(o=>
     `<tr><td><span class="src ${o.source}">${o.source}</span></td><td>${yen(o.price)}</td>`+
-    `<td>${esc(o.shop)||"—"}</td><td>${o.url?`<a href="${esc(o.url)}" target="_blank">商品ページ ↗</a>`:"—"}</td></tr>`
+    `<td>${esc(o.shop)||"—"}</td><td>${o.url?`<a href="${esc(rkLink(o.url,o.source))}" target="_blank">商品ページ ↗</a>`:"—"}</td></tr>`
   ).join("") || `<tr><td colspan="4">オファーなし</td></tr>`;
   const offTable = `<table class="ptable"><thead><tr><th>サイト</th><th>価格</th><th>店舗</th><th>リンク</th></tr></thead><tbody>${offers}</tbody></table>`;
   const vbg = `<a class="vbg" href="https://vbg.gs1jp.org/" target="_blank" onclick="copyJan('${esc(p.jan)}')">🔍 Verified by GS1で確認</a>`;
@@ -229,6 +246,9 @@ function openDetail(jan){
     row("商品説明", p.description?`<div class="ddesc">${esc(p.description)}</div>`:""),
     row("メモ", esc(p.note)),
     row("更新日時", esc((p.updated_at||"").replace("T"," ").slice(0,19))),
+    row("出典・ご注意", '価格・在庫・画像は取得時点のものです。最新は各「商品ページ」でご確認ください。<br>'+
+      'Supported by <a href="https://developers.rakuten.com/" target="_blank">Rakuten Developers</a>'+
+      ' ／ Powered by <a href="https://openfoodfacts.org/" target="_blank">Open Food Facts</a> (CC BY-SA)'),
   ].join("");
   document.getElementById("m_rows").innerHTML = rows;
 
@@ -346,5 +366,16 @@ document.getElementById("jan").addEventListener("keydown", e=>{ if(e.key==="Ente
 document.getElementById("pf_jan").addEventListener("keydown", e=>{ if(e.key==="Enter") findPrefix(); });
 document.getElementById("q").addEventListener("keydown", e=>{ if(e.key==="Enter") load(); });
 load();
+// 快速シリーズ等からの ?jan=XXXX ディープリンク: その商品の詳細を直接開く
+(async function(){
+  var jp = new URLSearchParams(location.search).get("jan");
+  if(!jp) return;
+  document.body.classList.add("detail-only");
+  try{
+    var r = await fetch(API + "/" + encodeURIComponent(jp.trim()));
+    if(r.ok){ var p = await r.json(); byJan[p.jan]=p; openDetail(p.jan); }
+    else { msg("JAN " + jp + " はまだ登録されていません。"); }
+  }catch(e){}
+})();
 </script>
 <

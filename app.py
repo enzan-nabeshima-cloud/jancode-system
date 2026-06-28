@@ -27,6 +27,7 @@ DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "jan_db.sqlite3"))
 CONFIG = {
     "RAKUTEN_APP_ID": os.environ.get("RAKUTEN_APP_ID", ""),
     "RAKUTEN_ACCESS_KEY": os.environ.get("RAKUTEN_ACCESS_KEY", ""),
+    "RAKUTEN_AFFILIATE_ID": os.environ.get("RAKUTEN_AFFILIATE_ID", ""),
     "YAHOO_APP_ID": os.environ.get("YAHOO_APP_ID", ""),
     "AMAZON_ACCESS_KEY": os.environ.get("AMAZON_ACCESS_KEY", ""),
     "AMAZON_SECRET_KEY": os.environ.get("AMAZON_SECRET_KEY", ""),
@@ -160,7 +161,8 @@ def index():
         "amazon": bool(CONFIG["AMAZON_ACCESS_KEY"]),
         "off": str(CONFIG.get("OFF_ENABLED", "1")) not in ("0", "false", ""),
     }
-    return render_template("index.html", configured=configured)
+    return render_template("index.html", configured=configured,
+                           affiliate_id=CONFIG.get("RAKUTEN_AFFILIATE_ID", ""))
 
 
 @app.route("/api/products", methods=["GET"])
